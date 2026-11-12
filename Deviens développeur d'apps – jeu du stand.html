@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Deviens développeur d'apps – jeu du stand</title>
+<style>
+  :root { --bg:#1c1c1e; --panel:#2a2a2d; --panel2:#3a3a3f; --txt:#f5f5f5; --grey:#a0a0a8; --yel:#ffcc00; --acc:#5ac8fa; --pink:#ff69a0; --green:#50dc78; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt); font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 18px; }
+  h1 { margin: 0 0 4px; font-size: 28px; }
+  .sub { color: var(--grey); margin: 0 0 16px; }
+  .step { display:inline-block; background:var(--yel); color:#222; font-weight:800; border-radius:10px; padding:4px 10px; margin-right:10px; font-size:14px; vertical-align: middle; }
+  .row { display:flex; gap:18px; flex-wrap:wrap; }
+  .card { background:var(--panel); border-radius:16px; padding:16px; }
+  .hidden { display:none !important; }
+  button { font: inherit; font-weight: 700; border: 0; border-radius: 12px; padding: 12px 18px; cursor: pointer; color: #fff; background: var(--panel2); }
+  button:hover { filter: brightness(1.1); }
+  button.big { font-size: 22px; padding: 16px 26px; }
+  button.green { background: var(--green); color:#103018; }
+  button.blue { background: var(--acc); color:#08243a; }
+  button.yel { background: var(--yel); color:#222; }
+  input[type=text] { font: inherit; font-size: 20px; padding: 10px 12px; border-radius: 10px; border: 2px solid var(--panel2); background: #141416; color: var(--txt); width: 100%; }
+  #editor { touch-action: none; background:#232326; border-radius: 10px; cursor: crosshair; width: 384px; height: 384px; image-rendering: pixelated; }
+  .palette { display:grid; grid-template-columns: repeat(5, 48px); gap: 10px; margin: 8px 0 14px; }
+  .sw { width:48px; height:48px; border-radius:50%; border:4px solid transparent; cursor:pointer; }
+  .sw.sel { border-color: #fff; }
+  .sw.eraser { background: repeating-conic-gradient(#666 0 25%, #333 0 50%) 50%/16px 16px; }
+  #preview { width: 96px; height: 96px; image-rendering: pixelated; background: #78bef9; border-radius: 10px; }
+  .board ol { margin: 0; padding: 0; list-style: none; }
+  .board li { display:flex; align-items:center; gap:10px; background: var(--panel2); border-radius: 10px; padding: 6px 10px; margin-bottom: 6px; font-weight: 700; font-size: 18px; }
+  .board li .rk { color: var(--grey); width: 28px; }
+  .board li .nm { flex: 1; overflow:hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .board li .sc { font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .board li.me { background: var(--yel); color: #222; }
+  .board li canvas { width: 28px; height: 28px; image-rendering: pixelated; }
+  .gamearea { position: relative; flex: 1 1 640px; min-width: 320px; }
+  #game { width: 100%; height: auto; display: block; border-radius: 16px; background: #78bef9; touch-action: manipulation; }
+  .overlay { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background: rgba(16,16,18,.75); border-radius: 16px; flex-direction: column; gap: 14px; text-align:center; padding: 20px; }
+  .overlay h2 { margin: 0; font-size: 40px; }
+  .overlay p { margin: 0; font-size: 20px; color: #dde; }
+  .hud { display:flex; justify-content: space-between; align-items:center; margin-bottom: 10px; gap: 10px; flex-wrap: wrap; }
+  .tag { padding: 6px 12px; border-radius: 999px; font-weight: 800; }
+  .tag.defi { background: var(--pink); color: #2a0614; }
+  .small { font-size: 13px; color: var(--grey); }
+  #fx { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; border-radius:16px; }
+  .del { display:none; background:#e53935; color:#fff; border-radius:8px; padding:2px 8px; font-size:14px; }
+  body.admin .del { display:inline-block; }
+  #btnReset { display:none; }
+  body.admin #btnReset { display:inline-block; }
+  #adminBar { display:none; background:#e53935; color:#fff; text-align:center; font-weight:800; padding:6px; }
+  body.admin #adminBar { display:block; }
+  #pseudo.bad { border-color:#e53935; }
+  #pseudoErr { color:#ff6e6e; font-weight:700; font-size:14px; min-height: 18px; }
+  .kbd { display:inline-block; border:2px solid currentColor; border-radius:6px; padding:0 6px; font-size:14px; margin-left:6px; opacity:.8; }
+  .linkbtn { background: none; color: var(--grey); padding: 4px 0; font-weight: 500; text-decoration: underline; font-size: 13px; }
+</style>
+</head>
+<body>
+<div id="adminBar">MODE ADMIN : clique sur ✕ pour supprimer un pseudo · Maj + Suppr pour quitter</div>
+<div class="wrap">
+
+  <!-- ============ MENU / ÉDITEUR ============ -->
+  <section id="menu">
+    <h1><span class="step">ÉTAPE 1</span>Dessine ton perso</h1>
+    <p class="sub">Clique ou glisse sur les cases pour colorier. Ton dessin deviendra le héros du jeu !</p>
+    <div class="row">
+      <div class="card">
+        <canvas id="editor" width="384" height="384"></canvas>
+        <div style="display:flex; gap:10px; margin-top:12px;">
+          <button id="btnClear">🧽 Tout effacer</button>
+          <button id="btnTemplate">🐸 Perso exemple</button>
+        </div>
+      </div>
+      <div class="card" style="flex:1 1 280px; max-width: 360px;">
+        <div style="font-weight:800">Couleurs</div>
+        <div class="palette" id="palette"></div>
+        <div style="display:flex; gap:14px; align-items:center; margin-bottom: 16px;">
+          <canvas id="preview" width="16" height="16"></canvas>
+          <div class="small">Aperçu de ton perso</div>
+        </div>
+        <div style="font-weight:800; margin-bottom:6px;">Ton pseudo</div>
+        <input type="text" id="pseudo" maxlength="12" placeholder="ex : Lina">
+        <div class="small" style="margin:4px 0 2px;">Juste un prénom ou un surnom, pas de nom de famille.</div>
+        <div id="pseudoErr"></div>
+        <div style="display:flex; flex-direction:column; gap:10px;">
+          <button class="big green" id="btnDefi">🏆 Jouer <span class="kbd">Entrée</span></button>
+          <div class="small">1 vie · ça accélère · après 45 s ça devient extrême · compte pour le classement</div>
+        </div>
+      </div>
+      <div class="card board" style="flex:1 1 260px;">
+        <div style="font-weight:800; color: var(--yel); font-size: 22px; margin-bottom: 10px;">🏆 TOP DU JOUR</div>
+        <ol id="boardMenu"></ol>
+        <button class="linkbtn" id="btnReset">Effacer le classement</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ JEU ============ -->
+  <section id="play" class="hidden">
+    <div class="hud">
+      <div><span class="tag defi">🏆 DÉFI</span> <span class="small">1 vie · pas de fin · tiens le plus longtemps possible</span></div>
+      <div style="display:flex; gap:8px;"><button id="btnMute">🔊 Son (M)</button><button id="btnMenu">⬅ Menu (Échap)</button></div>
+    </div>
+    <div class="row">
+      <div class="gamearea">
+        <canvas id="game" width="960" height="420"></canvas>
+        <div class="overlay hidden" id="over"></div>
+        <canvas id="fx" width="960" height="420"></canvas>
+      </div>
+      <div class="card board" id="sideBoard" style="flex: 0 1 300px;">
+        <div style="font-weight:800; color: var(--yel); font-size: 20px; margin-bottom: 10px;">🏆 TOP DU JOUR</div>
+        <ol id="boardSide"></ol>
+      </div>
+    </div>
+    <p class="small" style="margin-top:12px;">Sauter : <b>Espace</b>, <b>flèche haut</b>, ou <b>clic / toucher</b> sur le jeu. Appuie <b>encore une fois en l'air</b> pour redescendre plus vite.</p>
+  </section>
+</div>
+
+<script>
+// ---------------- Données de base ----------------
+const COLORS = ["#5ad26e","#2e9e4a","#ffffff","#14141e","#ff6e96","#ffc828","#ff8c28","#5ac8fa","#8a5cf6","#e53935"];
+const TEMPLATE = [
+  "................","......GGGG......",".....GGGGGG.....","....GGWWGWWG....",
+  "....GGWKGWKG....","....GGGGGGGG....","....GGPPPPGG....",".....GGGGGG.....",
+  "...YGGGGGGGGY...","..YY.GGGGGG.YY..",".....GGGGGG.....",".....GGGGGG.....",
+  ".....GG..GG.....",".....GG..GG.....","....OOO..OOO....","................"];
+const TMAP = {G:0,W:2,K:3,P:4,Y:5,O:6};
+let pixels = new Array(256).fill(-1);
+function loadTemplate(){ pixels = []; TEMPLATE.forEach(r => [...r].forEach(c => pixels.push(c === "." ? -1 : TMAP[c]))); }
+loadTemplate();
+
+const RULES = { gravite: 5, saut: 8, taille: 1 }; // physique du perso
+
+// ---------------- Stockage (classement) ----------------
+const KEY = "salon-dev-classement";
+// Le classement est enregistré dans le localStorage du navigateur :
+// il reste là même si on recharge la page ou qu'on ferme le navigateur.
+function loadBoard(){
+  try { return JSON.parse(localStorage.getItem(KEY)) || []; }
+  catch(e){ return []; }
+}
+function saveBoard(b){
+  try { localStorage.setItem(KEY, JSON.stringify(b)); }
+  catch(e){ console.warn("localStorage indisponible : le classement ne sera pas sauvegardé", e); }
+}
+function packPixels(p){ return p.map(v => v < 0 ? "." : String(v)).join(""); }
+function unpackPixels(s){ return [...s].map(c => c === "." ? -1 : +c); }
+
+// ---------------- Rendu d'un sprite ----------------
+function spriteCanvas(px){
+  const c = document.createElement("canvas"); c.width = c.height = 16;
+  const x = c.getContext("2d");
+  px.forEach((v,i) => { if (v >= 0){ x.fillStyle = COLORS[v]; x.fillRect(i%16, (i/16)|0, 1, 1); } });
+  return c;
+}
+let sprite = spriteCanvas(pixels);
+
+// ---------------- Éditeur ----------------
+const ed = document.getElementById("editor"), edx = ed.getContext("2d");
+const prev = document.getElementById("preview"), prx = prev.getContext("2d");
+let cur = 0, painting = false, paintVal = 0;
+const pal = document.getElementById("palette");
+COLORS.forEach((c,i) => { const d = document.createElement("div"); d.className = "sw" + (i===0?" sel":""); d.style.background = c; d.onclick = () => selectColor(i, d); pal.appendChild(d); });
+const er = document.createElement("div"); er.className = "sw eraser"; er.title = "Gomme"; er.onclick = () => selectColor(-1, er); pal.appendChild(er);
+function selectColor(i, el){ cur = i; pal.querySelectorAll(".sw").forEach(s => s.classList.remove("sel")); el.classList.add("sel"); }
+function drawEditor(){
+  const cs = 24;
+  edx.fillStyle = "#232326"; edx.fillRect(0,0,384,384);
+  pixels.forEach((v,i) => { if (v >= 0){ edx.fillStyle = COLORS[v]; edx.fillRect((i%16)*cs, ((i/16)|0)*cs, cs, cs); } });
+  edx.strokeStyle = "rgba(255,255,255,.08)"; edx.lineWidth = 1;
+  for (let k=0;k<=16;k++){ edx.beginPath(); edx.moveTo(k*cs+.5,0); edx.lineTo(k*cs+.5,384); edx.stroke(); edx.beginPath(); edx.moveTo(0,k*cs+.5); edx.lineTo(384,k*cs+.5); edx.stroke(); }
+  sprite = spriteCanvas(pixels);
+  prx.clearRect(0,0,16,16); prx.drawImage(sprite,0,0);
+}
+function paintAt(e){
+  const r = ed.getBoundingClientRect();
+  const gx = Math.floor((e.clientX - r.left) / r.width * 16), gy = Math.floor((e.clientY - r.top) / r.height * 16);
+  if (gx<0||gy<0||gx>15||gy>15) return;
+  pixels[gy*16+gx] = paintVal; drawEditor();
+}
+ed.addEventListener("pointerdown", e => { painting = true; ed.setPointerCapture(e.pointerId);
+  const r = ed.getBoundingClientRect(); const idx = Math.floor((e.clientY-r.top)/r.height*16)*16 + Math.floor((e.clientX-r.left)/r.width*16);
+  paintVal = (pixels[idx] === cur && cur >= 0) ? -1 : cur; paintAt(e); });
+ed.addEventListener("pointermove", e => { if (painting) paintAt(e); });
+ed.addEventListener("pointerup", () => painting = false);
+document.getElementById("btnClear").onclick = () => { pixels.fill(-1); drawEditor(); };
+document.getElementById("btnTemplate").onclick = () => { loadTemplate(); drawEditor(); };
+drawEditor();
+
+// ---------------- Classement (affichage) ----------------
+let lastEntryId = null;
+function renderBoard(el){
+  const b = loadBoard(); el.innerHTML = "";
+  if (!b.length){ el.innerHTML = '<li><span class="nm" style="color:var(--grey); font-weight:500">Personne encore… sois le premier !</span></li>'; return; }
+  b.slice(0,10).forEach((e,i) => {
+    const li = document.createElement("li"); if (e.id === lastEntryId) li.className = "me";
+    const av = spriteCanvas(unpackPixels(e.px));
+    li.innerHTML = `<span class="rk">${i+1}.</span>`; li.appendChild(av);
+    const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = e.name; li.appendChild(nm);
+    const sc = document.createElement("span"); sc.className = "sc"; sc.textContent = e.score; li.appendChild(sc);
+    const del = document.createElement("button"); del.className = "del"; del.textContent = "✕"; del.title = "Supprimer";
+    del.onclick = () => { saveBoard(loadBoard().filter(x => x.id !== e.id)); refreshBoards(); };
+    li.appendChild(del);
+    el.appendChild(li);
+  });
+}
+let resetArmed = false;
+document.getElementById("btnReset").onclick = (ev) => {
+  if (!resetArmed){ resetArmed = true; ev.target.textContent = "Sûr ? Clique encore pour tout effacer"; setTimeout(()=>{ resetArmed=false; ev.target.textContent="Effacer le classement"; }, 3000); return; }
+  saveBoard([]); resetArmed = false; ev.target.textContent = "Effacer le classement"; refreshBoards();
+};
+renderBoard(document.getElementById("boardMenu"));
+
+// ---------------- Réglages ----------------
+const ATTRACT_APRES = 30;  // secondes sans rien toucher avant que la démo se lance toute seule
+const EXTREME = 45;        // moment où le bandeau "MODE EXTRÊME" s'affiche
+const VITESSE_MAX = 1800;  // vitesse maximale du jeu
+const RAMPE_DEBUT = 35, RAMPE_FIN = 65; // la difficulté monte progressivement entre ces deux moments
+
+// ---------------- Filtre de pseudos ----------------
+// Mots interdits n'importe où dans le pseudo (assez longs pour ne pas bloquer de vrais prénoms)
+const MOTS_INTERDITS = ["connard","connasse","conasse","putain","pute","salope","salaud","encule","enculer","merde","bite","chatte","couille","nique","niquer","batard","pede","tapette","gouine","branleur","ordure","negre","negro","bougnoul","nazi","hitler","zizi","penis","vagin",
+  "arsch","scheiss","scheis","fotze","hure","wichser","schlampe","schwuchtel","fick","missgeburt","spast","hurensohn",
+  "fuck","shit","bitch","dick","cock","pussy","nigger","nigga","slut","whore","cunt","porn","sexe","sex"];
+// Mots interdits seulement s'ils sont le pseudo entier ou un mot à part (sinon "Pascal" ou "Constance" seraient bloqués)
+const MOTS_COURTS = ["con","conne","cul","pd","tg","fdp","ntm","ass","nik","fils de pute"];
+function normaliser(s){
+  return s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/0/g,"o").replace(/1/g,"i").replace(/3/g,"e").replace(/4/g,"a").replace(/5/g,"s").replace(/7/g,"t").replace(/@/g,"a").replace(/\$/g,"s");
+}
+function pseudoOk(nom){
+  const n = normaliser(nom);
+  const colle = n.replace(/[^a-z]/g, "");               // "p.u.t.e" → "pute"
+  if (MOTS_INTERDITS.some(m => colle.includes(m))) return false;
+  const mots = n.split(/[^a-z]+/).filter(Boolean);
+  if (MOTS_COURTS.some(m => mots.includes(m) || colle === m.replace(/ /g,""))) return false;
+  return true;
+}
+
+// ---------------- Sons (générés par le code, aucun fichier) ----------------
+let actx = null, muted = false;
+function audio(){
+  if (!actx){ try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e){ return null; } }
+  if (actx.state === "suspended") actx.resume();
+  return actx;
+}
+function tone(freq, dur, type = "square", vol = 0.12, slideTo = null, delay = 0){
+  if (muted || state.startsWith("attract")) return;
+  const a = audio(); if (!a) return;
+  const t0 = a.currentTime + delay, o = a.createOscillator(), gn = a.createGain();
+  o.type = type; o.frequency.setValueAtTime(freq, t0);
+  if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t0 + dur);
+  gn.gain.setValueAtTime(vol, t0); gn.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+  o.connect(gn).connect(a.destination); o.start(t0); o.stop(t0 + dur + 0.05);
+}
+function noise(dur, vol = 0.3){
+  if (muted || state.startsWith("attract")) return;
+  const a = audio(); if (!a) return;
+  const buf = a.createBuffer(1, a.sampleRate * dur, a.sampleRate), d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
+  const src = a.createBufferSource(), gn = a.createGain(), f = a.createBiquadFilter();
+  f.type = "lowpass"; f.frequency.value = 900; gn.gain.value = vol;
+  src.buffer = buf; src.connect(f).connect(gn).connect(a.destination); src.start();
+}
+const SFX = {
+  jump:      () => tone(380, 0.15, "square", 0.10, 760),
+  dive:      () => tone(700, 0.12, "sawtooth", 0.08, 150),
+  land:      () => tone(110, 0.06, "triangle", 0.15),
+  crash:     () => { noise(0.45, 0.35); tone(220, 0.45, "sawtooth", 0.12, 40); },
+  beep:      () => tone(520, 0.16, "square", 0.10),
+  go:        () => tone(1040, 0.35, "square", 0.10),
+  warn:      () => { tone(880, 0.14, "square", 0.08); tone(660, 0.14, "square", 0.08, null, 0.17); },
+  milestone: () => { tone(1320, 0.07, "triangle", 0.08); tone(1760, 0.09, "triangle", 0.08, null, 0.07); },
+  record:    () => [523, 659, 784, 1047, 784, 1047].forEach((f, i) => tone(f, 0.18, "square", 0.10, null, i * 0.11)),
+};
+
+// ---------------- Jeu ----------------
+const cv = document.getElementById("game"), g = cv.getContext("2d");
+const fxc = document.getElementById("fx"), fx = fxc.getContext("2d");
+const W = 960, H = 420, GROUND = 360, PX = 130;
+// états : "menu" | "countdown" | "play" | "dying" | "over" | "attract"
+let state = "menu";
+let t = 0, dist = 0, obstacles = [], sinceSpawn = 0, nextGap = 600;
+let py = GROUND, vy = 0, rot = 0, clouds = [], lastTs = performance.now();
+let countdown = 0, dieT = 0, particles = [], confetti = [], shake = 0;
+let debug = false, fps = 60, lastMilestone = 0, warned = 0, lastInput = performance.now();
+
+function size(){ return 48 * RULES.taille; }
+// 0 avant RAMPE_DEBUT, 1 après RAMPE_FIN, et une montée en douceur (courbe en S) entre les deux
+function difficulte(){
+  const x = Math.min(1, Math.max(0, (t - RAMPE_DEBUT) / (RAMPE_FIN - RAMPE_DEBUT)));
+  return x * x * (3 - 2 * x);
+}
+function speed(){
+  const v = 320 + t * 9 + difficulte() * 900; // accélération douce + bonus qui monte progressivement
+  return Math.min(v, VITESSE_MAX);            // plafond : très dur, mais jamais impossible
+}
+function lerp(a, b, k){ return a + (b - a) * k; }
+function score(){ return Math.floor(dist / 20); }
+
+function show(id, on){ document.getElementById(id).classList.toggle("hidden", !on); }
+function refreshBoards(){ renderBoard(document.getElementById("boardMenu")); renderBoard(document.getElementById("boardSide")); }
+
+function resetWorld(){
+  t = 0; dist = 0; obstacles = []; sinceSpawn = 0; nextGap = 520; py = GROUND; vy = 0; rot = 0;
+  particles = []; confetti = []; shake = 0; lastMilestone = 0; warned = 0;
+  clouds = [0,1,2,3].map(i => ({ x: i*280 + Math.random()*120, y: 40 + Math.random()*110, s: .6 + Math.random()*.6 }));
+}
+function startGame(){
+  if (document.activeElement) document.activeElement.blur(); // sinon le champ pseudo garde les touches
+  resetWorld();
+  state = "countdown"; countdown = 3.0; SFX.beep();
+  show("menu", false); show("play", true); show("over", false);
+  refreshBoards();
+}
+function toMenu(){
+  state = "menu";
+  show("play", false); show("menu", true);
+  refreshBoards();
+}
+function nextPlayer(){
+  lastEntryId = null; loadTemplate(); drawEditor();
+  document.getElementById("pseudo").value = ""; checkPseudo();
+  toMenu();
+}
+
+// ---------------- Mode démo (attract) ----------------
+function startAttract(){
+  resetWorld(); state = "attract"; lastEntryId = null;
+  show("menu", false); show("play", true); show("over", false);
+  refreshBoards();
+}
+function botThink(){
+  const sz = size(), s = speed();
+  const ahead = obstacles.filter(o => o.x + o.w > PX + sz * 0.2).sort((a, b) => a.x - b.x);
+  if (!ahead.length) return;
+  // un "groupe" = un cactus + ceux qui sont collés à lui
+  let end = ahead[0].x + ahead[0].w;
+  for (const o of ahead.slice(1)) if (o.x <= end + 10) end = Math.max(end, o.x + o.w);
+  const dx = ahead[0].x - (PX + sz * 0.8);
+  const onGround = py >= GROUND - 0.5;
+  if (onGround && dx < s * 0.2 + 15 && dx > -10) jump();
+  // replonge dès que le groupe est passé sous lui (et que le prochain est proche)
+  const next = ahead.find(o => o.x > end + 10);
+  if (!onGround && vy < 900 && end < PX + sz * 0.15 && next && next.x - PX < s * 0.7) jump();
+}
+
+// ---------------- Contrôle du perso ----------------
+function jump(){
+  if (state !== "play" && state !== "attract") return;
+  const onGround = py >= GROUND - 0.5;
+  if (onGround){ vy = -RULES.saut * 100; SFX.jump(); }   // au sol : on saute
+  else { vy = RULES.saut * 160; SFX.dive(); }            // en l'air : on replonge vers le sol
+}
+
+function spawn(){
+  const s = speed(), d = difficulte();
+  const h = 40 + Math.random() * 32, w = 28;
+  obstacles.push({ x: W + 10, w, h });
+  const chanceDouble = t < 15 ? 0 : lerp(0.3, 0.7, d);   // de plus en plus de doubles cactus
+  if (Math.random() < chanceDouble) obstacles.push({ x: W + 10 + w + 4, w, h: 36 + Math.random() * 20 });
+  // Les cactus se resserrent petit à petit : vers la fin, il faut replonger (2e appui) pour passer entre eux
+  nextGap = s * (lerp(1.0, 0.6, d) + Math.random() * lerp(0.9, 0.5, d));
+}
+
+function playerBox(){ const sz = size(); return { x: PX + sz*0.2, y: py - sz*0.88, w: sz*0.6, h: sz*0.8 }; }
+
+function stepWorld(dt){
+  t += dt;
+  const s = speed(), sz = size();
+  dist += s * dt;
+  // physique
+  const wasAir = py < GROUND - 0.5, impact = vy;
+  vy += RULES.gravite * 400 * dt; py += vy * dt;
+  if (py >= GROUND){
+    py = GROUND;
+    if (wasAir && impact > 200){ poussiere(); if (impact > 1000) SFX.land(); }
+    if (vy > 0) vy = 0;
+  }
+  if (py - sz < 0){ py = sz; if (vy < 0) vy = 0; }
+  // obstacles
+  sinceSpawn += s * dt;
+  if (sinceSpawn >= nextGap){ sinceSpawn = 0; spawn(); }
+  obstacles.forEach(o => o.x -= s * dt);
+  obstacles = obstacles.filter(o => o.x + o.w > -10);
+  clouds.forEach(c => { c.x -= s * 0.15 * c.s * dt; if (c.x < -140){ c.x = W + 40; c.y = 40 + Math.random()*110; } });
+  // petits sons de progression
+  const m = Math.floor(score() / 500); if (m > lastMilestone){ lastMilestone = m; SFX.milestone(); }
+  if (warned === 0 && t >= EXTREME - 3){ warned = 1; SFX.warn(); }
+  if (warned === 1 && t >= EXTREME){ warned = 2; SFX.warn(); }
+  // collision (boîte un peu plus petite que le dessin, pour être sympa)
+  const b = playerBox();
+  for (const o of obstacles){
+    if (b.x < o.x + o.w && b.x + b.w > o.x && b.y < GROUND && b.y + b.h > GROUND - o.h){ die(); return; }
+  }
+}
+
+function die(){
+  state = state === "attract" ? "attract-dying" : "dying";
+  dieT = 0; SFX.crash(); shake = 0.45;
+  vy = -650; // le perso est éjecté vers le haut
+  const sz = size();
+  // explosion : des morceaux aux couleurs du perso
+  const cols = [...new Set(pixels.filter(v => v >= 0))].map(v => COLORS[v]);
+  for (let i = 0; i < 40; i++){
+    particles.push({ x: PX + sz/2, y: py - sz/2, vx: (Math.random() - 0.3) * 600, vy: -Math.random() * 600,
+      life: 0.9 + Math.random() * 0.5, age: 0, size: 4 + Math.random() * 6, col: cols[i % cols.length] || "#fff", grav: 1400 });
+  }
+}
+function poussiere(){
+  for (let i = 0; i < 10; i++){
+    particles.push({ x: PX + size()/2 + (Math.random() - 0.5) * 30, y: GROUND, vx: (Math.random() - 0.5) * 220 - 120, vy: -Math.random() * 140,
+      life: 0.35 + Math.random() * 0.2, age: 0, size: 4 + Math.random() * 4, col: "#c9a97a", grav: 600 });
+  }
+}
+function lancerConfettis(){
+  const cols = ["#ffcc00","#ff6e96","#5ac8fa","#50dc78","#8a5cf6","#ffffff"];
+  for (let i = 0; i < 180; i++){
+    confetti.push({ x: Math.random() * W, y: -20 - Math.random() * 300, vx: (Math.random() - 0.5) * 120, vy: 120 + Math.random() * 180,
+      r: Math.random() * 6, vr: (Math.random() - 0.5) * 12, w: 6 + Math.random() * 6, h: 10 + Math.random() * 8, col: cols[i % cols.length] });
+  }
+}
+
+function update(dt){
+  if (state === "countdown"){
+    const before = Math.ceil(countdown);
+    countdown -= dt;
+    clouds.forEach(c => { c.x -= 30 * c.s * dt; });
+    if (countdown <= 0){ state = "play"; SFX.go(); }
+    else if (Math.ceil(countdown) !== before) SFX.beep();
+  } else if (state === "play"){
+    stepWorld(dt);
+  } else if (state === "attract"){
+    botThink(); stepWorld(dt);
+  } else if (state === "dying" || state === "attract-dying"){
+    dieT += dt; vy += 2200 * dt; py += vy * dt; rot += 9 * dt;
+    if (dieT > 0.9){
+      if (state === "dying") showGameOver();
+      else { resetWorld(); state = "attract"; }   // la démo recommence toute seule
+    }
+  }
+  // particules et confettis
+  particles.forEach(p => { p.age += dt; p.vy += p.grav * dt; p.x += p.vx * dt; p.y += p.vy * dt; });
+  particles = particles.filter(p => p.age < p.life);
+  confetti.forEach(c => { c.x += c.vx * dt; c.y += c.vy * dt; c.r += c.vr * dt; c.vx += Math.sin(c.y / 30) * 20 * dt; });
+  confetti = confetti.filter(c => c.y < H + 30);
+  if (shake > 0) shake -= dt;
+}
+
+// ---------------- Dessin ----------------
+// Le ciel change de couleur avec la difficulté : bleu → orange → rouge
+function mix(c1, c2, k){
+  const a = c1.match(/\w\w/g).map(h => parseInt(h, 16)), b = c2.match(/\w\w/g).map(h => parseInt(h, 16));
+  return "rgb(" + a.map((v, i) => Math.round(lerp(v, b[i], k))).join(",") + ")";
+}
+function skyColor(){
+  const d = difficulte();
+  return d < 0.5 ? mix("78bef9", "ff9a4d", d * 2) : mix("ff9a4d", "8b1e3f", (d - 0.5) * 2);
+}
+
+function draw(){
+  const sz = size(), d = difficulte();
+  g.save();
+  if (shake > 0){ const a = 14 * shake; g.translate((Math.random() - 0.5) * a, (Math.random() - 0.5) * a); }
+  g.fillStyle = skyColor(); g.fillRect(-20, -20, W + 40, H + 40);
+  g.fillStyle = mix("f5f6fa", "ffd9c2", d);
+  clouds.forEach(c => { g.beginPath(); g.ellipse(c.x, c.y, 60*c.s, 22*c.s, 0, 0, Math.PI*2); g.fill(); g.beginPath(); g.ellipse(c.x+30*c.s, c.y-12*c.s, 36*c.s, 18*c.s, 0, 0, Math.PI*2); g.fill(); });
+  // sol
+  g.fillStyle = mix("6e5032", "4a2f22", d); g.fillRect(-20, GROUND, W + 40, H - GROUND + 20);
+  g.fillStyle = mix("50be5a", "8a9a3a", d); g.fillRect(-20, GROUND, W + 40, 12);
+  g.fillStyle = "rgba(0,0,0,.18)"; const off = dist % 60;
+  for (let x = -off; x < W; x += 60) g.fillRect(x, GROUND + 30, 24, 6);
+  // cactus
+  obstacles.forEach(o => {
+    g.fillStyle = "#288c3c";
+    roundRect(o.x, GROUND - o.h, o.w, o.h + 2, 8);
+    roundRect(o.x - 12, GROUND - o.h*0.7, 14, 20, 6);
+    roundRect(o.x + o.w - 2, GROUND - o.h*0.5, 12, 16, 6);
+  });
+  // perso
+  g.imageSmoothingEnabled = false;
+  if (state === "dying" || state === "attract-dying"){
+    g.save(); g.translate(PX + sz/2, py - sz/2); g.rotate(rot); g.globalAlpha = Math.max(0, 1 - dieT);
+    g.drawImage(sprite, -sz/2, -sz/2, sz, sz); g.restore();
+  } else if (state !== "over"){
+    g.drawImage(sprite, PX, py - sz, sz, sz);
+  }
+  // particules
+  particles.forEach(p => { g.globalAlpha = Math.max(0, 1 - p.age / p.life); g.fillStyle = p.col; g.fillRect(p.x, p.y, p.size, p.size); });
+  g.globalAlpha = 1;
+  g.restore();
+
+  // HUD
+  g.font = "bold 26px ui-monospace, Menlo, Consolas, monospace";
+  pill(W - 230, 14, 216, 44); g.fillStyle = "#ffcc00"; g.fillText("SCORE " + String(score()).padStart(4,"0"), W - 216, 46);
+  pill(14, 14, 130, 44); g.fillStyle = t >= EXTREME ? "#ff6e96" : "#fff"; g.fillText("⏱ " + Math.floor(t) + "s", 28, 46);
+  if (state === "play"){
+    if (t >= EXTREME - 3 && t < EXTREME) bandeau("⚠ Mode EXTRÊME dans " + Math.ceil(EXTREME - t) + "…", "#ffcc00");
+    if (t >= EXTREME && t < EXTREME + 2.5 && Math.floor(t * 4) % 2 === 0) bandeau("🔥 MODE EXTRÊME 🔥", "#ff6e96");
+  }
+  if (state === "countdown"){
+    const n = Math.ceil(countdown), k = countdown - Math.floor(countdown);
+    g.save(); g.translate(W/2, H/2 - 20); g.scale(1 + k * 0.6, 1 + k * 0.6);
+    g.font = "bold 120px system-ui"; g.textAlign = "center"; g.textBaseline = "middle";
+    g.fillStyle = "rgba(0,0,0,.35)"; g.fillText(n, 4, 6); g.fillStyle = "#fff"; g.fillText(n, 0, 0);
+    g.restore();
+    g.font = "bold 24px system-ui"; g.textAlign = "center"; g.fillStyle = "#fff";
+    g.fillText("Espace = sauter · encore Espace en l'air = replonger", W/2, H/2 + 80); g.textAlign = "left";
+  }
+  if (state === "attract" || state === "attract-dying") drawAttract();
+  if (debug) drawDebug();
+
+  // confettis (sur un calque au-dessus de l'écran de fin)
+  fx.clearRect(0, 0, W, H);
+  confetti.forEach(c => { fx.save(); fx.translate(c.x, c.y); fx.rotate(c.r); fx.fillStyle = c.col; fx.fillRect(-c.w/2, -c.h/2, c.w, c.h); fx.restore(); });
+}
+
+function drawAttract(){
+  g.fillStyle = "rgba(16,16,18,.45)"; g.fillRect(0, 0, W, H);
+  g.textAlign = "center";
+  g.font = "bold 22px system-ui"; g.fillStyle = "#ffcc00"; g.fillText("DÉMO", W/2, 40);
+  g.font = "bold 50px system-ui"; g.fillStyle = "#fff"; g.fillText("Deviens développeur d'apps !", W/2, 140);
+  const pulse = 0.6 + 0.4 * Math.sin(performance.now() / 250);
+  g.globalAlpha = pulse; g.font = "bold 34px system-ui"; g.fillStyle = "#ffcc00";
+  g.fillText("👉 Appuie sur une touche pour jouer", W/2, 205); g.globalAlpha = 1;
+  const best = loadBoard()[0];
+  g.font = "bold 24px system-ui"; g.fillStyle = "#fff";
+  g.fillText(best ? `Record du jour : ${best.name} · ${best.score} points. Tu peux le battre ?` : "Personne n'a encore joué aujourd'hui… sois le premier !", W/2, 255);
+  g.textAlign = "left";
+}
+
+function drawDebug(){
+  // boîtes de collision : ce que le jeu "voit" vraiment
+  const b = playerBox();
+  g.lineWidth = 2; g.strokeStyle = "#00ff66"; g.strokeRect(b.x, b.y, b.w, b.h);
+  g.strokeStyle = "#ff2a2a"; obstacles.forEach(o => g.strokeRect(o.x, GROUND - o.h, o.w, o.h));
+  const lines = [
+    `fps          ${fps.toFixed(0)}`,
+    `etat         "${state}"`,
+    `t            ${t.toFixed(2)} s`,
+    `speed()      ${speed().toFixed(0)} px/s`,
+    `difficulte() ${difficulte().toFixed(3)}`,
+    `py / vy      ${py.toFixed(0)} / ${vy.toFixed(0)}`,
+    `obstacles    ${obstacles.length}`,
+    `nextGap      ${nextGap.toFixed(0)} px`,
+  ];
+  g.fillStyle = "rgba(0,0,0,.8)"; roundRect(14, 70, 300, 44 + lines.length * 22, 10);
+  g.font = "16px ui-monospace, Menlo, Consolas, monospace"; g.fillStyle = "#00ff66";
+  lines.forEach((l, i) => g.fillText(l, 26, 96 + i * 22));
+  g.fillStyle = "#ffcc00"; g.fillText("DEBUG (H pour cacher)", 26, 96 + lines.length * 22);
+}
+
+function bandeau(txt, col){
+  g.font = "bold 34px system-ui"; const tw = g.measureText(txt).width;
+  g.fillStyle = "rgba(0,0,0,.75)"; roundRect(W/2 - tw/2 - 24, 90, tw + 48, 56, 14);
+  g.fillStyle = col; g.fillText(txt, W/2 - tw/2, 130);
+  g.font = "bold 26px ui-monospace, Menlo, Consolas, monospace";
+}
+function pill(x,y,w,h){ g.fillStyle = "rgba(0,0,0,.75)"; roundRect(x,y,w,h,12); }
+function roundRect(x,y,w,h,r){ g.beginPath(); g.roundRect ? g.roundRect(x,y,w,h,r) : g.rect(x,y,w,h); g.fill(); }
+
+// Une seule boucle qui tourne en permanence
+function loop(ts){
+  const raw = (ts - lastTs) / 1000; lastTs = ts;
+  if (raw > 0) fps = lerp(fps, 1 / raw, 0.05);
+  const dt = Math.min(0.05, Math.max(0, raw));
+  if (state !== "menu"){ update(dt); draw(); }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+// ---------------- Fin de partie ----------------
+let overSince = 0;
+function showGameOver(){
+  state = "over"; overSince = performance.now();
+  const sc = score();
+  const name = (document.getElementById("pseudo").value.trim() || "Joueur").slice(0,12);
+  const before = loadBoard();
+  const ancienRecord = before.length ? before[0].score : 0;
+  const id = Date.now() + "-" + Math.random().toString(36).slice(2,6);
+  const b = [...before, { id, name, score: sc, px: packPixels(pixels) }];
+  b.sort((a,c) => c.score - a.score); saveBoard(b.slice(0,50));
+  lastEntryId = id;
+  const rank = b.findIndex(e => e.id === id) + 1;
+  const record = rank === 1 && sc > ancienRecord;
+  if (record){ lancerConfettis(); SFX.record(); }
+  const titre = record ? "🏆 NOUVEAU RECORD DU JOUR !" : rank <= 10 ? "💥 Perdu… mais tu es dans le top 10 !" : "💥 Perdu !";
+  const ov = document.getElementById("over");
+  ov.innerHTML = `<h2>${titre}</h2>
+    <p>${name.replace(/</g,"&lt;")} : <b style="color:var(--yel)">${sc}</b> points · tenu <b>${Math.floor(t)} s</b> · <b>${rank}${rank===1?"er":"e"}</b> du classement</p>
+    <div style="display:flex; gap:12px; flex-wrap:wrap; justify-content:center; margin-top:8px;">
+      <button class="big green" id="ovAgain">↻ Rejouer <span class="kbd">Espace</span></button>
+      <button class="big yel" id="ovNext">👉 Joueur suivant <span class="kbd">Entrée</span></button>
+    </div>`;
+  show("over", true);
+  document.getElementById("ovAgain").onclick = startGame;
+  document.getElementById("ovNext").onclick = nextPlayer;
+  refreshBoards();
+}
+
+// ---------------- Pseudo ----------------
+const pseudoEl = document.getElementById("pseudo");
+function checkPseudo(){
+  const ok = pseudoOk(pseudoEl.value);
+  pseudoEl.classList.toggle("bad", !ok);
+  document.getElementById("pseudoErr").textContent = ok ? "" : "Ce pseudo n'est pas autorisé, choisis-en un autre 🙂";
+  return ok;
+}
+pseudoEl.addEventListener("input", checkPseudo);
+function tryStart(){ if (checkPseudo()) startGame(); else pseudoEl.focus(); }
+
+// ---------------- Contrôles ----------------
+document.getElementById("btnDefi").onclick = tryStart;
+document.getElementById("btnMenu").onclick = toMenu;
+const btnMute = document.getElementById("btnMute");
+function toggleMute(){ muted = !muted; btnMute.textContent = muted ? "🔇 Son coupé (M)" : "🔊 Son (M)"; }
+btnMute.onclick = toggleMute;
+
+function activite(){ lastInput = performance.now(); }
+["pointerdown","pointermove","keydown","wheel","touchstart"].forEach(ev => window.addEventListener(ev, activite, { passive: true }));
+
+cv.addEventListener("pointerdown", e => {
+  e.preventDefault(); audio();
+  if (state === "attract" || state === "attract-dying") return nextPlayer();
+  jump();
+});
+window.addEventListener("pointerdown", e => {
+  if ((state === "attract" || state === "attract-dying") && e.target !== cv) nextPlayer();
+});
+
+window.addEventListener("keydown", e => {
+  audio();
+  // Maj + Suppr : mode admin (supprimer un pseudo, effacer le classement)
+  if (e.shiftKey && e.code === "Delete"){ e.preventDefault(); document.body.classList.toggle("admin"); return; }
+  if (state === "attract" || state === "attract-dying"){ e.preventDefault(); nextPlayer(); return; }
+  if (state === "menu"){
+    if (e.code === "Enter" || e.code === "NumpadEnter"){ e.preventDefault(); tryStart(); }
+    return;
+  }
+  if (e.code === "KeyH"){ debug = !debug; return; }
+  if (e.code === "KeyM"){ toggleMute(); return; }
+  if (e.code === "Escape"){ toMenu(); return; }
+  if (state === "over"){
+    // petite pause pour ne pas relancer par accident en martelant Espace
+    if (performance.now() - overSince < 600 || e.repeat) return;
+    if (e.code === "Space"){ e.preventDefault(); startGame(); }
+    if (e.code === "Enter" || e.code === "NumpadEnter"){ e.preventDefault(); nextPlayer(); }
+    return;
+  }
+  if (e.code === "Space" || e.code === "ArrowUp"){ e.preventDefault(); if (!e.repeat) jump(); }
+});
+
+// Démo automatique quand personne ne touche à rien
+setInterval(() => {
+  const idle = (performance.now() - lastInput) / 1000;
+  if ((state === "menu" || state === "over") && idle > ATTRACT_APRES) startAttract();
+}, 1000);
+</script>
+</body>
+</html>
