@@ -55,6 +55,28 @@
   #pseudoErr { color:#ff6e6e; font-weight:700; font-size:14px; min-height: 18px; }
   .kbd { display:inline-block; border:2px solid currentColor; border-radius:6px; padding:0 6px; font-size:14px; margin-left:6px; opacity:.8; }
   .linkbtn { background: none; color: var(--grey); padding: 4px 0; font-weight: 500; text-decoration: underline; font-size: 13px; }
+  /* Podium (menu et démo) */
+  #podium { margin-top: 28px; }
+  #podium h2 { text-align: center; margin: 0 0 6px; font-size: clamp(26px, 3.4vh, 38px); color: var(--yel); }
+  #podium .sous { text-align: center; color: var(--grey); margin: 0 0 18px; font-size: 16px; }
+  .marches { display: flex; justify-content: center; align-items: flex-end; gap: clamp(14px, 2.5vw, 40px); }
+  .place { display: flex; flex-direction: column; align-items: center; width: clamp(170px, 20vw, 280px); }
+  .place canvas { image-rendering: pixelated; width: var(--sz); height: var(--sz); margin-bottom: 8px; }
+  .place .nom { font-size: clamp(22px, 2.8vh, 32px); font-weight: 800; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .place .pts { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: clamp(18px, 2.3vh, 26px); color: var(--grey); margin-bottom: 10px; }
+  .place .marche { width: 100%; height: var(--h); border-radius: 12px 12px 0 0; display: flex; justify-content: center; align-items: center; font-size: clamp(30px, calc(var(--h) * .5), 64px); line-height: 1; font-weight: 900; color: rgba(0,0,0,.55); }
+  /* tailles calculées en JS pour remplir exactement la place libre en bas de l'écran */
+  .p1 { --sz: var(--sz1, 150px); --h: var(--h1, 130px); }
+  .p2 { --sz: var(--sz2, 110px); --h: var(--h2, 90px); }
+  .p3 { --sz: var(--sz2, 110px); --h: var(--h3, 62px); }
+  .p1 .marche { background: var(--yel); } .p2 .marche { background: #c9ccd6; } .p3 .marche { background: #d99058; }
+  .p1 .nom { color: var(--yel); }
+  .place.libre canvas { opacity: .18; }
+  .place.libre .nom { color: var(--grey); font-weight: 600; }
+  @keyframes sautille { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+  .p1:not(.libre) canvas { animation: sautille 1.2s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce) { .p1 canvas { animation: none !important; } }
+
   /* Vue développeur (touche H) */
   #devPanel { flex: 0 1 430px; min-width: 340px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 14px; line-height: 1.55; }
   #devPanel pre { margin: 0 0 14px; white-space: pre; overflow-x: auto; font: inherit; color: var(--txt); }
@@ -128,6 +150,13 @@
       <div class="card hidden" id="devPanel"></div>
     </div>
     <p class="small" style="margin-top:12px;">Sauter : <b>Espace</b>, <b>flèche haut</b>, ou <b>clic / toucher</b> sur le jeu. Appuie <b>encore une fois en l'air</b> pour redescendre plus vite.</p>
+  </section>
+
+  <!-- ============ PODIUM (menu et démo) ============ -->
+  <section id="podium">
+    <h2>Podium du jour</h2>
+    <p class="sous">Les trois meilleurs persos d'aujourd'hui. Tu peux prendre leur place ?</p>
+    <div class="marches" id="marches"></div>
   </section>
 </div>
 
@@ -320,7 +349,42 @@ function lerp(a, b, k){ return a + (b - a) * k; }
 function score(){ return Math.floor(dist / 20); }
 
 function show(id, on){ document.getElementById(id).classList.toggle("hidden", !on); }
-function refreshBoards(){ renderBoard(document.getElementById("boardMenu")); renderBoard(document.getElementById("boardSide")); }
+function refreshBoards(){ renderBoard(document.getElementById("boardMenu")); renderBoard(document.getElementById("boardSide")); renderPodium(); }
+
+// ---------------- Podium ----------------
+function renderPodium(){
+  const top = loadBoard().slice(0, 3), el = document.getElementById("marches");
+  el.innerHTML = "";
+  [1, 0, 2].forEach(i => {              // ordre d'affichage : 2e, 1er, 3e
+    const e = top[i], place = document.createElement("div");
+    place.className = "place p" + (i + 1) + (e ? "" : " libre");
+    const px = e ? unpackPixels(e.px) : TEMPLATE.join("").split("").map(c => c === "." ? -1 : TMAP[c]);
+    place.appendChild(spriteCanvas(px));
+    const nom = document.createElement("div"); nom.className = "nom"; nom.textContent = e ? e.name : "Place libre"; place.appendChild(nom);
+    const pts = document.createElement("div"); pts.className = "pts"; pts.textContent = e ? e.score + " points" : "—"; place.appendChild(pts);
+    const marche = document.createElement("div"); marche.className = "marche"; marche.textContent = i + 1; place.appendChild(marche);
+    el.appendChild(place);
+  });
+}
+// Le podium ne s'affiche que hors des parties : pendant la création du perso et pendant la démo
+let podiumVisible = null;
+function majPodium(){
+  const vis = state === "menu" || state === "attract" || state === "attract-dying";
+  if (vis !== podiumVisible){ podiumVisible = vis; document.getElementById("podium").classList.toggle("hidden", !vis); if (vis){ renderPodium(); taillePodium(); } }
+}
+// Adapte la taille du podium à la place qui reste en bas de l'écran
+function taillePodium(){
+  const pod = document.getElementById("podium");
+  if (pod.classList.contains("hidden")) return;
+  const haut = pod.getBoundingClientRect().top + window.scrollY;
+  const libre = window.innerHeight - haut - 16;                 // hauteur disponible
+  const R = Math.max(170, Math.min(470, libre - 180));          // - titre, nom et points
+  const sz1 = Math.min(220, R * 0.55), h1 = R - sz1;
+  pod.style.setProperty("--sz1", sz1 + "px"); pod.style.setProperty("--h1", h1 + "px");
+  pod.style.setProperty("--sz2", sz1 * 0.75 + "px");
+  pod.style.setProperty("--h2", h1 * 0.68 + "px"); pod.style.setProperty("--h3", h1 * 0.46 + "px");
+}
+window.addEventListener("resize", taillePodium);
 
 function resetWorld(){
   t = 0; dist = 0; obstacles = []; sinceSpawn = 0; nextGap = 520; py = GROUND; vy = 0; rot = 0;
@@ -677,6 +741,7 @@ function loop(ts){
   if (raw > 0) fps = lerp(fps, 1 / raw, 0.05);
   const dt = Math.min(0.05, Math.max(0, raw));
   if (state !== "menu"){ update(dt); draw(); }
+  majPodium();
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
