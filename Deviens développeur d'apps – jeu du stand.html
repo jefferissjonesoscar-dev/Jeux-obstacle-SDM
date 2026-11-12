@@ -35,7 +35,7 @@
   .board li .sc { font-family: ui-monospace, Menlo, Consolas, monospace; }
   .board li.me { background: var(--yel); color: #222; }
   .board li canvas { width: 28px; height: 28px; image-rendering: pixelated; }
-  .gamearea { position: relative; flex: 1 1 640px; min-width: 320px; }
+  .gamearea { align-self: flex-start; position: relative; flex: 1 1 640px; min-width: 320px; }
   #game { width: 100%; height: auto; display: block; border-radius: 16px; background: #78bef9; touch-action: manipulation; }
   .overlay { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background: rgba(16,16,18,.75); border-radius: 16px; flex-direction: column; gap: 14px; text-align:center; padding: 20px; }
   .overlay h2 { margin: 0; font-size: 40px; }
@@ -55,6 +55,18 @@
   #pseudoErr { color:#ff6e6e; font-weight:700; font-size:14px; min-height: 18px; }
   .kbd { display:inline-block; border:2px solid currentColor; border-radius:6px; padding:0 6px; font-size:14px; margin-left:6px; opacity:.8; }
   .linkbtn { background: none; color: var(--grey); padding: 4px 0; font-weight: 500; text-decoration: underline; font-size: 13px; }
+  /* Vue développeur (touche H) */
+  #devPanel { flex: 0 1 430px; min-width: 340px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 14px; line-height: 1.55; }
+  #devPanel pre { margin: 0 0 14px; white-space: pre; overflow-x: auto; font: inherit; color: var(--txt); }
+  #devPanel .c { color: #7d8590; }            /* commentaire */
+  #devPanel .k { color: var(--pink); }        /* mot-clé */
+  #devPanel .f { color: var(--acc); }         /* fonction */
+  #devPanel input { font: inherit; font-weight: 700; color: var(--yel); background: #141416; border: 1px solid var(--panel2); border-radius: 4px; padding: 0 3px; text-align: center; -moz-appearance: textfield; }
+  #devPanel input::-webkit-inner-spin-button { -webkit-appearance: none; }
+  #devPanel input:focus { outline: none; border-color: var(--yel); }
+  #devPanel input.modif { color: #141416; background: var(--yel); }
+  #devStatus:empty { display: none; }
+  #devStatus {  color: var(--pink); font-weight: 700; margin-bottom: 8px; }
 </style>
 </head>
 <body>
@@ -113,6 +125,7 @@
         <div style="font-weight:800; color: var(--yel); font-size: 20px; margin-bottom: 10px;">🏆 TOP DU JOUR</div>
         <ol id="boardSide"></ol>
       </div>
+      <div class="card hidden" id="devPanel"></div>
     </div>
     <p class="small" style="margin-top:12px;">Sauter : <b>Espace</b>, <b>flèche haut</b>, ou <b>clic / toucher</b> sur le jeu. Appuie <b>encore une fois en l'air</b> pour redescendre plus vite.</p>
   </section>
@@ -131,7 +144,14 @@ let pixels = new Array(256).fill(-1);
 function loadTemplate(){ pixels = []; TEMPLATE.forEach(r => [...r].forEach(c => pixels.push(c === "." ? -1 : TMAP[c]))); }
 loadTemplate();
 
-const RULES = { gravite: 5, saut: 8, taille: 1 }; // physique du perso
+// Toutes les règles du jeu : la vue développeur (touche H) permet de les changer en direct
+const RULES = {
+  gravite: 5, saut: 8, taille: 1,                          // physique du perso
+  vitesseDepart: 320, acceleration: 9, bonusExtreme: 900, // vitesse du jeu
+  vitesseMax: 1800, plongee: 160,
+};
+const DEFAUTS = { ...RULES };
+function reglesModifiees(){ return Object.keys(DEFAUTS).some(k => RULES[k] !== DEFAUTS[k]); }
 
 // ---------------- Stockage (classement) ----------------
 const KEY = "salon-dev-classement";
@@ -216,7 +236,6 @@ renderBoard(document.getElementById("boardMenu"));
 // ---------------- Réglages ----------------
 const ATTRACT_APRES = 30;  // secondes sans rien toucher avant que la démo se lance toute seule
 const EXTREME = 45;        // moment où le bandeau "MODE EXTRÊME" s'affiche
-const VITESSE_MAX = 1800;  // vitesse maximale du jeu
 const RAMPE_DEBUT = 35, RAMPE_FIN = 65; // la difficulté monte progressivement entre ces deux moments
 
 // ---------------- Filtre de pseudos ----------------
@@ -285,7 +304,7 @@ let state = "menu";
 let t = 0, dist = 0, obstacles = [], sinceSpawn = 0, nextGap = 600;
 let py = GROUND, vy = 0, rot = 0, clouds = [], lastTs = performance.now();
 let countdown = 0, dieT = 0, particles = [], confetti = [], shake = 0;
-let debug = false, fps = 60, lastMilestone = 0, warned = 0, lastInput = performance.now();
+let debug = false, partieModifiee = false, fps = 60, lastMilestone = 0, warned = 0, lastInput = performance.now();
 
 function size(){ return 48 * RULES.taille; }
 // 0 avant RAMPE_DEBUT, 1 après RAMPE_FIN, et une montée en douceur (courbe en S) entre les deux
@@ -294,8 +313,8 @@ function difficulte(){
   return x * x * (3 - 2 * x);
 }
 function speed(){
-  const v = 320 + t * 9 + difficulte() * 900; // accélération douce + bonus qui monte progressivement
-  return Math.min(v, VITESSE_MAX);            // plafond : très dur, mais jamais impossible
+  const v = RULES.vitesseDepart + t * RULES.acceleration + difficulte() * RULES.bonusExtreme;
+  return Math.min(v, RULES.vitesseMax);       // plafond : très dur, mais jamais impossible
 }
 function lerp(a, b, k){ return a + (b - a) * k; }
 function score(){ return Math.floor(dist / 20); }
@@ -309,6 +328,7 @@ function resetWorld(){
   clouds = [0,1,2,3].map(i => ({ x: i*280 + Math.random()*120, y: 40 + Math.random()*110, s: .6 + Math.random()*.6 }));
 }
 function startGame(){
+  partieModifiee = reglesModifiees(); // si les règles sont changées, le score ne compte pas
   if (document.activeElement) document.activeElement.blur(); // sinon le champ pseudo garde les touches
   resetWorld();
   state = "countdown"; countdown = 3.0; SFX.beep();
@@ -320,7 +340,13 @@ function toMenu(){
   show("play", false); show("menu", true);
   refreshBoards();
 }
+// Nouveau joueur ou démo : on remet les règles normales et on quitte la vue développeur
+function remettreANormal(){
+  Object.assign(RULES, DEFAUTS);
+  if (debug) basculerDev();
+}
 function nextPlayer(){
+  remettreANormal();
   lastEntryId = null; loadTemplate(); drawEditor();
   document.getElementById("pseudo").value = ""; checkPseudo();
   toMenu();
@@ -328,6 +354,7 @@ function nextPlayer(){
 
 // ---------------- Mode démo (attract) ----------------
 function startAttract(){
+  remettreANormal();
   resetWorld(); state = "attract"; lastEntryId = null;
   show("menu", false); show("play", true); show("over", false);
   refreshBoards();
@@ -352,7 +379,7 @@ function jump(){
   if (state !== "play" && state !== "attract") return;
   const onGround = py >= GROUND - 0.5;
   if (onGround){ vy = -RULES.saut * 100; SFX.jump(); }   // au sol : on saute
-  else { vy = RULES.saut * 160; SFX.dive(); }            // en l'air : on replonge vers le sol
+  else { vy = RULES.saut * RULES.plongee; SFX.dive(); }  // en l'air : on replonge vers le sol
 }
 
 function spawn(){
@@ -461,6 +488,7 @@ function skyColor(){
 }
 
 function draw(){
+  if (debug){ drawDev(); return; }
   const sz = size(), d = difficulte();
   g.save();
   if (shake > 0){ const a = 14 * shake; g.translate((Math.random() - 0.5) * a, (Math.random() - 0.5) * a); }
@@ -510,7 +538,6 @@ function draw(){
     g.fillText("Espace = sauter · encore Espace en l'air = replonger", W/2, H/2 + 80); g.textAlign = "left";
   }
   if (state === "attract" || state === "attract-dying") drawAttract();
-  if (debug) drawDebug();
 
   // confettis (sur un calque au-dessus de l'écran de fin)
   fx.clearRect(0, 0, W, H);
@@ -531,25 +558,108 @@ function drawAttract(){
   g.textAlign = "left";
 }
 
-function drawDebug(){
-  // boîtes de collision : ce que le jeu "voit" vraiment
-  const b = playerBox();
-  g.lineWidth = 2; g.strokeStyle = "#00ff66"; g.strokeRect(b.x, b.y, b.w, b.h);
-  g.strokeStyle = "#ff2a2a"; obstacles.forEach(o => g.strokeRect(o.x, GROUND - o.h, o.w, o.h));
-  const lines = [
-    `fps          ${fps.toFixed(0)}`,
-    `etat         "${state}"`,
-    `t            ${t.toFixed(2)} s`,
-    `speed()      ${speed().toFixed(0)} px/s`,
-    `difficulte() ${difficulte().toFixed(3)}`,
-    `py / vy      ${py.toFixed(0)} / ${vy.toFixed(0)}`,
-    `obstacles    ${obstacles.length}`,
-    `nextGap      ${nextGap.toFixed(0)} px`,
+// Vue développeur : plus de décor, seulement ce que le code "voit" (des rectangles et des nombres)
+function drawDev(){
+  const MONO = "ui-monospace, Menlo, Consolas, monospace";
+  g.fillStyle = "#1c1c1e"; g.fillRect(0, 0, W, H);
+  // quadrillage tous les 40 px, avec les coordonnées
+  g.strokeStyle = "#26262a"; g.lineWidth = 1; g.font = "11px " + MONO; g.fillStyle = "#4a4a50";
+  for (let x = 0; x <= W; x += 40){ g.beginPath(); g.moveTo(x + .5, 0); g.lineTo(x + .5, H); g.stroke(); if (x % 160 === 0) g.fillText(x, x + 3, H - 4); }
+  for (let y = 0; y <= H; y += 40){ g.beginPath(); g.moveTo(0, y + .5); g.lineTo(W, y + .5); g.stroke(); if (y % 80 === 0 && y) g.fillText(y, 3, y - 3); }
+  // le sol
+  g.strokeStyle = "#a0a0a8"; g.lineWidth = 2; g.beginPath(); g.moveTo(0, GROUND); g.lineTo(W, GROUND); g.stroke();
+  g.font = "13px " + MONO; g.fillStyle = "#a0a0a8"; g.fillText("GROUND = " + GROUND, W - 140, GROUND + 20);
+  // les cactus
+  g.lineWidth = 2; g.strokeStyle = "#ff6e6e"; g.fillStyle = "rgba(255,110,110,.12)";
+  obstacles.forEach(o => {
+    g.fillRect(o.x, GROUND - o.h, o.w, o.h); g.strokeRect(o.x, GROUND - o.h, o.w, o.h);
+    g.save(); g.fillStyle = "#ff6e6e"; g.font = "12px " + MONO; g.fillText("h=" + Math.round(o.h), o.x - 4, GROUND - o.h - 6); g.restore();
+  });
+  // le perso (sa boîte de collision) + une flèche pour sa vitesse verticale
+  if (state !== "over"){
+    const b = playerBox();
+    g.fillStyle = "rgba(80,220,120,.15)"; g.fillRect(b.x, b.y, b.w, b.h);
+    g.strokeStyle = "#50dc78"; g.lineWidth = 2; g.strokeRect(b.x, b.y, b.w, b.h);
+    g.fillStyle = "#50dc78"; g.font = "12px " + MONO; g.fillText(`perso y=${Math.round(py)}`, b.x - 10, b.y - 8);
+    if (Math.abs(vy) > 20){
+      const cx = b.x + b.w + 14, cy = b.y + b.h / 2, len = Math.max(-120, Math.min(120, vy / 10));
+      g.strokeStyle = "#ffcc00"; g.beginPath(); g.moveTo(cx, cy); g.lineTo(cx, cy + len); g.stroke();
+      g.fillStyle = "#ffcc00"; g.beginPath(); g.moveTo(cx - 5, cy + len); g.lineTo(cx + 5, cy + len); g.lineTo(cx, cy + len + Math.sign(len) * 8); g.fill();
+      g.font = "12px " + MONO; g.fillText("vy=" + Math.round(vy), cx + 8, cy + len);
+    }
+  }
+  // valeurs en direct
+  const lignes = [
+    ["t", t.toFixed(1) + " s"], ["speed()", speed().toFixed(0) + " px/s"], ["difficulte()", difficulte().toFixed(2)],
+    ["score", String(score())], ["etat", '"' + state + '"'], ["fps", fps.toFixed(0)],
   ];
-  g.fillStyle = "rgba(0,0,0,.8)"; roundRect(14, 70, 300, 44 + lines.length * 22, 10);
-  g.font = "16px ui-monospace, Menlo, Consolas, monospace"; g.fillStyle = "#00ff66";
-  lines.forEach((l, i) => g.fillText(l, 26, 96 + i * 22));
-  g.fillStyle = "#ffcc00"; g.fillText("DEBUG (H pour cacher)", 26, 96 + lines.length * 22);
+  g.font = "14px " + MONO;
+  g.fillStyle = "rgba(28,28,30,.92)"; g.fillRect(8, 10, 230, 26 + lignes.length * 20);
+  lignes.forEach(([k, v], i) => { g.fillStyle = "#7d8590"; g.fillText(k, 16, 28 + i * 20); g.fillStyle = "#ffcc00"; g.fillText(v, 130, 28 + i * 20); });
+  if (state === "countdown"){
+    g.font = "bold 90px " + MONO; g.textAlign = "center"; g.fillStyle = "#fff"; g.fillText(Math.ceil(countdown), W/2, H/2); g.textAlign = "left";
+  }
+  if (state === "attract" || state === "attract-dying") drawAttract();
+  fx.clearRect(0, 0, W, H);
+  confetti.forEach(c => { fx.save(); fx.translate(c.x, c.y); fx.rotate(c.r); fx.fillStyle = c.col; fx.fillRect(-c.w/2, -c.h/2, c.w, c.h); fx.restore(); });
+}
+
+// ---------------- Panneau de code (vue développeur) ----------------
+const LIMITES = { gravite:[0,20], saut:[1,20], taille:[0.3,4], vitesseDepart:[50,2000], acceleration:[0,100], bonusExtreme:[0,5000], vitesseMax:[100,5000], plongee:[0,500] };
+const devPanel = document.getElementById("devPanel");
+function champ(k){ return `<input type="number" data-k="${k}" value="${RULES[k]}" step="any">`; }
+function construirePanneau(){
+  devPanel.innerHTML = `
+<div id="devStatus"></div>
+<pre><span class="c">// Change un nombre et appuie sur Entrée :</span>
+<span class="c">// le jeu change tout de suite.</span>
+
+<span class="k">const</span> RULES = {
+  gravite: ${champ("gravite")},  <span class="c">// ce qui te tire vers le bas</span>
+  saut:    ${champ("saut")},  <span class="c">// la force du saut</span>
+  taille:  ${champ("taille")},  <span class="c">// la taille du perso</span>
+};</pre>
+<pre><span class="k">function</span> <span class="f">speed</span>() {
+  <span class="k">const</span> v = ${champ("vitesseDepart")}   <span class="c">// vitesse au départ</span>
+    + t * ${champ("acceleration")}   <span class="c">// + chaque seconde</span>
+    + <span class="f">difficulte</span>() * ${champ("bonusExtreme")};
+  <span class="k">return</span> Math.<span class="f">min</span>(v, ${champ("vitesseMax")}); <span class="c">// max</span>
+}</pre>
+<pre><span class="k">function</span> <span class="f">jump</span>() {
+  <span class="k">if</span> (auSol) vy = -saut * 100; <span class="c">// sauter</span>
+  <span class="k">else</span> vy = saut * ${champ("plongee")};   <span class="c">// replonger</span>
+}</pre>
+<button id="btnDefauts">Remettre les valeurs d'origine</button>
+<p class="small" style="margin-top:10px;">H pour revenir au jeu normal.</p>`;
+  devPanel.querySelectorAll("input").forEach(inp => {
+    taillerChamp(inp);
+    inp.addEventListener("input", () => { taillerChamp(inp); appliquer(inp); });
+    inp.addEventListener("change", () => appliquer(inp, true));
+  });
+  document.getElementById("btnDefauts").onclick = () => { Object.assign(RULES, DEFAUTS); construirePanneau(); };
+  majStatut();
+}
+function taillerChamp(inp){ inp.style.width = Math.max(2, String(inp.value).length + 1.2) + "ch"; }
+function appliquer(inp, corriger){
+  const k = inp.dataset.k, [min, max] = LIMITES[k], v = parseFloat(inp.value);
+  if (!isNaN(v)){
+    RULES[k] = Math.min(max, Math.max(min, v));
+    if (state === "play" || state === "countdown") partieModifiee ||= reglesModifiees();
+  }
+  if (corriger){ inp.value = RULES[k]; taillerChamp(inp); }
+  inp.classList.toggle("modif", RULES[k] !== DEFAUTS[k]);
+  majStatut();
+}
+function majStatut(){
+  devPanel.querySelectorAll("input").forEach(i => i.classList.toggle("modif", RULES[i.dataset.k] !== DEFAUTS[i.dataset.k]));
+  const st = document.getElementById("devStatus");
+  if (st) st.textContent = reglesModifiees() ? "Règles modifiées : le score ne sera pas enregistré." : "";
+}
+function basculerDev(){
+  debug = !debug;
+  if (debug) construirePanneau();
+  show("devPanel", debug); show("sideBoard", !debug);
+  if (!debug && document.activeElement) document.activeElement.blur();
 }
 
 function bandeau(txt, col){
@@ -577,6 +687,19 @@ function showGameOver(){
   state = "over"; overSince = performance.now();
   const sc = score();
   const name = (document.getElementById("pseudo").value.trim() || "Joueur").slice(0,12);
+  if (partieModifiee){
+    const ov = document.getElementById("over");
+    ov.innerHTML = `<h2>Partie en mode développeur</h2>
+      <p>${sc} points en ${Math.floor(t)} s, mais les règles ont été modifiées : ce score n'est pas enregistré.</p>
+      <div style="display:flex; gap:12px; flex-wrap:wrap; justify-content:center; margin-top:8px;">
+        <button class="big green" id="ovAgain">Rejouer <span class="kbd">Espace</span></button>
+        <button class="big yel" id="ovNext">Joueur suivant <span class="kbd">Entrée</span></button>
+      </div>`;
+    show("over", true);
+    document.getElementById("ovAgain").onclick = startGame;
+    document.getElementById("ovNext").onclick = nextPlayer;
+    return;
+  }
   const before = loadBoard();
   const ancienRecord = before.length ? before[0].score : 0;
   const id = Date.now() + "-" + Math.random().toString(36).slice(2,6);
@@ -623,6 +746,7 @@ function activite(){ lastInput = performance.now(); }
 
 cv.addEventListener("pointerdown", e => {
   e.preventDefault(); audio();
+  if (document.activeElement && document.activeElement.tagName === "INPUT") document.activeElement.blur();
   if (state === "attract" || state === "attract-dying") return nextPlayer();
   jump();
 });
@@ -639,7 +763,12 @@ window.addEventListener("keydown", e => {
     if (e.code === "Enter" || e.code === "NumpadEnter"){ e.preventDefault(); tryStart(); }
     return;
   }
-  if (e.code === "KeyH"){ debug = !debug; return; }
+  // en train de taper un nombre dans le panneau de code : on ne touche pas au jeu
+  if (e.target.tagName === "INPUT"){
+    if (e.code === "Enter" || e.code === "NumpadEnter" || e.code === "Escape"){ e.preventDefault(); e.target.blur(); }
+    return;
+  }
+  if (e.code === "KeyH"){ basculerDev(); return; }
   if (e.code === "KeyM"){ toggleMute(); return; }
   if (e.code === "Escape"){ toMenu(); return; }
   if (state === "over"){
